@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>실시간 이모티콘 보내기</title>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+  <style>
+    :root { --ink:#3b3151; --paper:#fffdf8; --pink:#ff6f91; --yellow:#ffc857; --blue:#62c7e7; --mint:#77d6b3; --line:#eee5d6; }
+    * { box-sizing:border-box; }
+    html { min-width:320px; background:#fff7e8; }
+    body { margin:0; min-height:100vh; color:var(--ink); font-family:"Noto Sans KR","Malgun Gothic",sans-serif; font-size:16px; background:radial-gradient(circle at 10% 10%,#ffe3a8 0 8%,transparent 22%),radial-gradient(circle at 90% 12%,#ffd3df 0 7%,transparent 24%),linear-gradient(135deg,#fff9ed,#f2fbff); }
+    button,input { font:inherit; }
+    button { min-height:48px; border:0; border-radius:16px; cursor:pointer; color:var(--ink); font-weight:800; transition:transform .16s ease,box-shadow .16s ease,filter .16s ease; }
+    button:hover { filter:brightness(1.03); box-shadow:0 7px 17px #493c5b24; }
+    button:active,.reaction-btn.sent { transform:scale(1.055); }
+    button:focus-visible,input:focus-visible { outline:3px solid #604fbd; outline-offset:3px; }
+    .app { width:min(100%,1040px); margin:auto; padding:24px 18px 42px; }
+    .screen { display:none; animation:rise .35s ease; }
+    .screen.active { display:block; }
+    @keyframes rise { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+    .hero,.panel { background:color-mix(in srgb,var(--paper) 92%,white); border:1px solid #fff; border-radius:28px; box-shadow:0 13px 35px #5a47681c; }
+    .hero { padding:clamp(28px,7vw,64px); text-align:center; margin-top:clamp(12px,7vh,76px); }
+    .eyebrow { display:inline-block; margin:0 0 12px; padding:7px 13px; border-radius:99px; background:#eee8ff; color:#5a4aaa; font-weight:800; }
+    h1 { margin:0; font-size:clamp(28px,5vw,48px); line-height:1.25; letter-spacing:-.04em; }
+    .lead { margin:17px auto 28px; max-width:590px; line-height:1.7; color:#665d73; }
+    .mode-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; max-width:650px; margin:auto; }
+    .mode-btn { min-height:142px; padding:18px; font-size:clamp(19px,3vw,26px); box-shadow:inset 0 -5px #00000011; }
+    .mode-btn span { display:block; margin-bottom:6px; font-size:38px; }
+    .teacher { background:#c9b8ff; } .student { background:#ffcf78; }
+    .notice { margin:25px 0 0; padding:14px; border-radius:14px; background:#fff4d6; color:#695631; font-size:14px; line-height:1.55; text-align:left; }
+    .password-box { display:none; max-width:410px; margin:22px auto 0; padding:20px; text-align:left; background:#f7f3ff; border-radius:20px; }
+    .password-box.show { display:block; }
+    label { display:block; margin-bottom:9px; font-weight:800; }
+    input { width:100%; min-height:50px; padding:11px 14px; border:2px solid #ded6ec; border-radius:13px; background:white; }
+    .password-box button { width:100%; margin-top:12px; background:#9d85e5; }
+    .message { min-height:24px; margin:10px 0 0; font-weight:700; line-height:1.5; }
+    .error { color:#c73e58; } .success { color:#197d5b; } .muted { color:#766f80; }
+    .topbar { display:flex; align-items:center; justify-content:space-between; gap:15px; margin:0 0 18px; }
+    .home-btn { flex:0 0 auto; min-height:44px; padding:8px 15px; background:#fff; border:1px solid var(--line); }
+    .connection { margin:0; padding:9px 12px; border-radius:12px; background:#f1edf8; font-size:14px; font-weight:700; line-height:1.4; }
+    .connection.online { background:#def7eb; color:#176545; } .connection.offline { background:#fff0dd; color:#9c5b17; } .connection.failed { background:#ffe6e9; color:#b93d50; }
+    .reaction-area { padding:clamp(20px,4vw,40px); text-align:center; }
+    .reaction-area h1 { font-size:clamp(29px,5vw,45px); }
+    .reaction-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; margin:29px 0 16px; }
+    .reaction-btn { min-height:132px; padding:14px 8px; box-shadow:inset 0 -6px #00000010; font-size:clamp(16px,2.4vw,21px); }
+    .reaction-btn .emoji { display:block; margin-bottom:8px; font-size:clamp(42px,7vw,66px); }
+    .like { background:#a8ddf0; } .heart { background:#ffb5c5; } .clap { background:#ffe18c; }
+    .send-message { min-height:26px; margin:0; font-weight:800; }
+    .stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:13px; margin-top:18px; }
+    .stat { padding:18px 10px; border-radius:18px; background:#fff; border:1px solid var(--line); text-align:center; }
+    .stat .stat-emoji { font-size:28px; } .stat strong { display:block; margin-top:4px; font-size:clamp(25px,4vw,37px); }
+    .stat span { font-size:14px; }
+    .live-panel { padding:clamp(20px,4vw,40px); margin-top:20px; }
+    .live-panel h2 { margin:0 0 15px; font-size:22px; }
+    .live-list { display:flex; flex-wrap:wrap; gap:11px; min-height:70px; padding:16px; border-radius:18px; background:#faf7f0; }
+    .floating { display:inline-grid; place-items:center; width:52px; height:52px; border-radius:50%; background:white; box-shadow:0 5px 13px #493c5b1c; font-size:31px; animation:pop .42s cubic-bezier(.2,1.4,.45,1); }
+    @keyframes pop { from { opacity:0; transform:scale(.3) rotate(-18deg); } to { opacity:1; transform:scale(1) rotate(0); } }
+    .total { margin:0 0 21px; font-size:clamp(25px,4.5vw,39px); font-weight:900; text-align:center; }
+    .total strong { color:#ee5480; }
+    .teacher-counts { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:13px; }
+    .teacher-count { padding:20px 10px; border-radius:18px; text-align:center; }
+    .teacher-count:nth-child(1) { background:#dff6ff; } .teacher-count:nth-child(2) { background:#ffe4eb; } .teacher-count:nth-child(3) { background:#fff1bf; }
+    .teacher-count b { display:block; font-size:29px; } .teacher-count strong { display:block; margin-top:5px; font-size:34px; }
+    .teacher-note { margin:16px 0 0; color:#746c7d; text-align:center; line-height:1.6; }
+    @media (max-width:600px) { .app { padding:16px 12px 30px; } .mode-grid { grid-template-columns:1fr; } .mode-btn { min-height:105px; } .mode-btn span { display:inline; margin-right:8px; font-size:29px; } .reaction-grid { grid-template-columns:1fr; gap:12px; } .reaction-btn { min-height:80px; display:flex; align-items:center; justify-content:center; gap:10px; } .reaction-btn .emoji { display:inline; margin:0; font-size:42px; } .stats,.teacher-counts { gap:8px; } .stat,.teacher-count { padding:13px 5px; } .topbar { align-items:flex-start; } }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <section id="homeScreen" class="screen active" aria-labelledby="homeTitle">
+      <div class="hero">
+        <p class="eyebrow">초보자 수업용</p>
+        <h1 id="homeTitle">실시간 이모티콘 보내기</h1>
+        <p class="lead">수업 중에 마음을 이모티콘으로 바로 표현해 보세요.</p>
+        <div class="mode-grid">
+          <button id="teacherModeBtn" class="mode-btn teacher" type="button"><span>🧑‍🏫</span>강사 모드</button>
+          <button id="studentModeBtn" class="mode-btn student" type="button"><span>🧑‍🎓</span>학생 모드</button>
+        </div>
+        <div id="passwordBox" class="password-box">
+          <label for="passwordInput">강사 비밀번호</label>
+          <input id="passwordInput" type="password" inputmode="numeric" autocomplete="off" aria-describedby="passwordMessage" placeholder="비밀번호를 입력하세요">
+          <button id="passwordSubmit" type="button">강사 화면으로 들어가기</button>
+          <p id="passwordMessage" class="message" aria-live="polite"></p>
+        </div>
+        <p class="notice">제작 설명: 비밀번호 1004는 실습용 화면 진입 제한이며, 실제 데이터 보안을 보장하지 않습니다.</p>
+      </div>
+    </section>
+
+    <section id="studentScreen" class="screen" aria-labelledby="studentTitle">
+      <div class="topbar"><p id="studentConnection" class="connection" aria-live="polite">연결 상태를 확인하는 중이에요.</p><button class="home-btn" type="button">처음으로</button></div>
+      <div class="panel reaction-area">
+        <h1 id="studentTitle">지금 내 반응을 보내요!</h1>
+        <p class="lead">마음에 드는 버튼을 누르면 우리 반에 바로 전달돼요.</p>
+        <div class="reaction-grid" aria-label="반응 보내기">
+          <button class="reaction-btn like" data-type="like" type="button"><span class="emoji">👍</span>좋아요</button>
+          <button class="reaction-btn heart" data-type="heart" type="button"><span class="emoji">❤️</span>공감해요</button>
+          <button class="reaction-btn clap" data-type="clap" type="button"><span class="emoji">👏</span>응원해요</button>
+        </div>
+        <p id="sendMessage" class="send-message" aria-live="polite"></p>
+      </div>
+      <section class="panel live-panel" aria-labelledby="studentLiveTitle">
+        <h2 id="studentLiveTitle">우리 반의 실시간 반응</h2>
+        <div id="studentStats" class="stats"></div>
+        <div id="studentLiveList" class="live-list" aria-live="polite"></div>
+      </section>
+    </section>
+
+    <section id="teacherScreen" class="screen" aria-labelledby="teacherTitle">
+      <div class="topbar"><p id="teacherConnection" class="connection" aria-live="polite">연결 상태를 확인하는 중이에요.</p><button class="home-btn" type="button">처음으로</button></div>
+      <div class="panel live-panel">
+        <h1 id="teacherTitle">우리 반 실시간 반응</h1>
+        <p class="total">지금까지 반응 <strong id="totalCount">0</strong>회</p>
+        <div id="teacherCounts" class="teacher-counts"></div>
+        <p class="teacher-note">학생들이 보낸 반응이 이곳에 실시간으로 나타납니다.</p>
+      </div>
+      <section class="panel live-panel" aria-labelledby="teacherLiveTitle">
+        <h2 id="teacherLiveTitle">방금 도착한 반응</h2>
+        <div id="teacherLiveList" class="live-list" aria-live="polite"></div>
+      </section>
+    </section>
+  </main>
+
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyBab2ky44yT8WEa3K3REMyeWzcgUgj0o9c",
+      authDomain: "test1-f1f6f.firebaseapp.com",
+      databaseURL: "https://test1-f1f6f-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "test1-f1f6f",
+      storageBucket: "test1-f1f6f.firebasestorage.app",
+      messagingSenderId: "696366329095",
+      appId: "1:696366329095:web:feffd6ed3ca136014de9a2"
+    };
+
+    const REACTIONS = { like:{ emoji:"👍", label:"좋아요" }, heart:{ emoji:"❤️", label:"공감해요" }, clap:{ emoji:"👏", label:"응원해요" } };
+    const screens = { home:document.getElementById("homeScreen"), student:document.getElementById("studentScreen"), teacher:document.getElementById("teacherScreen") };
+    const passwordBox = document.getElementById("passwordBox"), passwordInput = document.getElementById("passwordInput"), passwordMessage = document.getElementById("passwordMessage");
+    const statusEls = [document.getElementById("studentConnection"), document.getElementById("teacherConnection")];
+    let reactionRef = null, connectedRef = null, databaseReady = false;
+
+    function showScreen(name) {
+      Object.values(screens).forEach(screen => screen.classList.remove("active"));
+      screens[name].classList.add("active");
+      if (name === "home") { passwordBox.classList.remove("show"); passwordInput.value = ""; passwordMessage.textContent = ""; }
+      window.scrollTo({ top:0, behavior:"smooth" });
+    }
+    function setConnection(text, kind="") { statusEls.forEach(el => { el.textContent = text; el.className = "connection " + kind; }); }
+    function createStats(counts, target, teacher=false) {
+      target.innerHTML = Object.entries(REACTIONS).map(([type, info]) => teacher
+        ? `<div class="teacher-count"><b>${info.emoji} ${info.label}</b><strong>${counts[type]}</strong><span>회</span></div>`
+        : `<div class="stat"><div class="stat-emoji">${info.emoji}</div><strong>${counts[type]}</strong><span>${info.label}</span></div>`).join("");
+    }
+    function createLive(reactions, target) {
+      const newest = reactions.sort((a,b) => b.time - a.time).slice(0,24);
+      target.innerHTML = newest.length ? newest.map(item => `<span class="floating" title="${REACTIONS[item.type].label}">${REACTIONS[item.type].emoji}</span>`).join("") : `<span class="muted">아직 도착한 반응이 없어요.</span>`;
+    }
+    function render(snapshot) {
+      const values = [];
+      snapshot.forEach(child => { const value = child.val(); if (value && REACTIONS[value.type]) values.push(value); });
+      const counts = { like:0, heart:0, clap:0 };
+      values.forEach(value => counts[value.type]++);
+      createStats(counts, document.getElementById("studentStats"));
+      createStats(counts, document.getElementById("teacherCounts"), true);
+      document.getElementById("totalCount").textContent = values.length;
+      createLive(values, document.getElementById("studentLiveList"));
+      createLive(values, document.getElementById("teacherLiveList"));
+    }
+    function initializeFirebase() {
+      if (!window.firebase || !firebaseConfig.databaseURL) { setConnection("Firebase 설정을 확인할 수 없어요.", "failed"); return; }
+      try {
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+        reactionRef = database.ref("practice/reactions");
+        connectedRef = database.ref(".info/connected");
+        connectedRef.on("value", snap => setConnection(snap.val() ? "Firebase에 연결되었어요." : "연결이 끊겼어요. 인터넷 상태를 확인해 주세요.", snap.val() ? "online" : "offline"));
+        reactionRef.on("value", render, error => setConnection("반응을 불러오지 못했어요. Firebase 규칙과 연결을 확인해 주세요.", "failed"));
+        databaseReady = true;
+      } catch (error) { console.error(error); setConnection("Firebase 연결을 시작하지 못했어요. 설정을 확인해 주세요.", "failed"); }
+    }
+    function sendReaction(type, button) {
+      if (!databaseReady || !reactionRef) { document.getElementById("sendMessage").textContent = "연결된 뒤에 다시 보내 주세요."; document.getElementById("sendMessage").className = "send-message error"; return; }
+      button.classList.add("sent"); setTimeout(() => button.classList.remove("sent"), 180);
+      const message = document.getElementById("sendMessage");
+      message.textContent = "반응을 보내는 중이에요…"; message.className = "send-message muted";
+      reactionRef.push({ type, time: firebase.database.ServerValue.TIMESTAMP })
+        .then(() => { message.textContent = `${REACTIONS[type].emoji} ${REACTIONS[type].label} 반응을 보냈어요!`; message.className = "send-message success"; })
+        .catch(error => { console.error(error); message.textContent = "전송에 실패했어요. 인터넷 연결과 Firebase 규칙을 확인한 뒤 다시 보내 주세요."; message.className = "send-message error"; });
+    }
+    document.getElementById("teacherModeBtn").addEventListener("click", () => { passwordBox.classList.add("show"); passwordInput.focus(); });
+    document.getElementById("studentModeBtn").addEventListener("click", () => showScreen("student"));
+    function checkPassword() { if (passwordInput.value === "1004") { showScreen("teacher"); } else { passwordMessage.textContent = "비밀번호가 맞지 않아요. 다시 입력해 주세요."; passwordMessage.className = "message error"; passwordInput.focus(); } }
+    document.getElementById("passwordSubmit").addEventListener("click", checkPassword);
+    passwordInput.addEventListener("keydown", event => { if (event.key === "Enter") checkPassword(); });
+    document.querySelectorAll(".home-btn").forEach(button => button.addEventListener("click", () => showScreen("home")));
+    document.querySelectorAll(".reaction-btn").forEach(button => button.addEventListener("click", () => sendReaction(button.dataset.type, button)));
+    initializeFirebase();
+  </script>
+</body>
+</html>
